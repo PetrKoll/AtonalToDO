@@ -1,15 +1,25 @@
-import { ItemView, Notice, Plugin, TFile, WorkspaceLeaf, normalizePath } from "obsidian";
+import { ItemView, Menu, Notice, Plugin, TFile, WorkspaceLeaf, normalizePath } from "obsidian";
 
 const VIEW_TYPE_ATONAL_TODO = "atonal-todo-view";
-const TODO_FILE_PATH = "Desk/Today.md";
-const TOMORROW_FILE_PATH = "Desk/Tomorrow.md";
+const POCKET_FILE_PATH = "Desk/Pocket.md";
+const SPACES_FOLDER_PATH = "Desk/Spaces";
 const ARCHIVE_FOLDER_PATH = "Desk/Archive";
 const TASK_LINE = /^(\s*)-\s\[( |x|X)\]\s(.*)$/;
+const DEFAULT_SPACES = ["Fixed Delivery", "VRKO", "Workshop", "Shopping", "Ideas"];
 
 type Task = {
   line: number;
   text: string;
   completed: boolean;
+};
+
+type SpaceFile = {
+  name: string;
+  path: string;
+};
+
+type AtonalToDoSettings = {
+  lastArchiveDate: string;
 };
 
 type DragState = {
@@ -23,10 +33,21 @@ type DragState = {
   dragging: boolean;
 };
 
+const DEFAULT_SETTINGS: AtonalToDoSettings = {
+  lastArchiveDate: ""
+};
+
 export default class AtonalToDoPlugin extends Plugin {
-  private isRedirectingTodoFile = false;
+  settings: AtonalToDoSettings = DEFAULT_SETTINGS;
+  activePath = POCKET_FILE_PATH;
+  private isRedirectingManagedFile = false;
+  private allowRawManagedOpenOnce = false;
 
   async onload() {
+    await this.loadSettings();
+    await this.ensureWorkspaceFiles();
+    await this.archiveCompletedIfNeeded();
+
     this.registerView(
       VIEW_TYPE_ATONAL_TODO,
       (leaf) => new AtonalToDoView(leaf, this)
@@ -45,36 +66,49 @@ export default class AtonalToDoPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: "open-atonal-todo-note",
-      name: "Open AtonalToDo note",
+      id: "open-atonal-todo-pocket-note",
+      name: "Open AtonalToDo Pocket note",
       callback: () => {
-        void this.openTodoFile();
+        void this.openPocketNote();
       }
     });
 
     this.registerEvent(
       this.app.workspace.on("file-open", (file) => {
-        if (file?.path !== TODO_FILE_PATH || this.isRedirectingTodoFile) {
+        if (this.allowRawManagedOpenOnce) {
+          this.allowRawManagedOpenOnce = false;
           return;
         }
 
-        this.isRedirectingTodoFile = true;
+        if (!file || !this.isManagedTaskPath(file.path) || this.isRedirectingManagedFile) {
+          return;
+        }
+
+        this.isRedirectingManagedFile = true;
         window.setTimeout(() => {
-          void this.openView(true).finally(() => {
-            this.isRedirectingTodoFile = false;
+          void this.openView(file.path, true).finally(() => {
+            this.isRedirectingManagedFile = false;
           });
         }, 0);
       })
     );
-
-    void this.getTodoFile();
   }
 
   onunload() {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_ATONAL_TODO);
   }
 
-  async openView(reuseActiveLeaf = false) {
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+
+  async openView(path = POCKET_FILE_PATH, reuseActiveLeaf = false) {
+    await this.ensureWorkspaceFiles();
+    this.activePath = normalizePath(path);
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_ATONAL_TODO);
 
     const leaf = this.app.workspace.getLeaf(!reuseActiveLeaf);
@@ -87,37 +121,31 @@ export default class AtonalToDoPlugin extends Plugin {
     this.app.workspace.revealLeaf(leaf);
   }
 
-  async openTodoFile() {
-    const file = await this.getTodoFile();
+  async openPocketNote() {
+    const file = await this.getOrCreateFile(POCKET_FILE_PATH);
     const leaf = this.app.workspace.getLeaf(true);
 
     if (!leaf) {
-      new Notice("Could not open AtonalToDo note.");
+      new Notice("Could not open Pocket note.");
       return;
     }
 
+    this.allowRawManagedOpenOnce = true;
     await leaf.openFile(file);
     this.app.workspace.revealLeaf(leaf);
   }
 
-  async getTodoFile(): Promise<TFile> {
-    const path = normalizePath(TODO_FILE_PATH);
-    const existing = this.app.vault.getAbstractFileByPath(path);
+  async ensureWorkspaceFiles() {
+    await this.getOrCreateFile(POCKET_FILE_PATH);
+    await this.ensureFolder(SPACES_FOLDER_PATH);
+    await this.ensureFolder(ARCHIVE_FOLDER_PATH);
 
-    if (existing instanceof TFile) {
-      return existing;
+    const spaces = await this.listSpaces(false);
+    if (spaces.length > 0) return;
+
+    for (const name of DEFAULT_SPACES) {
+      await this.getOrCreateFile(`${SPACES_FOLDER_PATH}/${name}.md`);
     }
-
-    if (existing) {
-      throw new Error(`${path} is not a note.`);
-    }
-
-    const folder = path.split("/").slice(0, -1).join("/");
-    if (folder) {
-      await this.ensureFolder(folder);
-    }
-
-    return this.app.vault.create(path, "");
   }
 
   async getOrCreateFile(path: string): Promise<TFile> {
@@ -140,42 +168,117 @@ export default class AtonalToDoPlugin extends Plugin {
     return this.app.vault.create(normalizedPath, "");
   }
 
-  async promoteTomorrowIfTodayIsEmpty() {
-    const todayFile = await this.getTodoFile();
-    const tomorrowFile = await this.getOrCreateFile(TOMORROW_FILE_PATH);
-    const todayContent = await this.app.vault.read(todayFile);
-    const tomorrowContent = await this.app.vault.read(tomorrowFile);
-
-    if (todayContent.trim().length > 0 || parseTasks(tomorrowContent).length === 0) {
-      return;
+  async listSpaces(ensureDefaults = true): Promise<SpaceFile[]> {
+    if (ensureDefaults) {
+      await this.ensureWorkspaceFiles();
     }
 
-    await this.app.vault.modify(todayFile, normalizeTaskBlock(tomorrowContent));
-    await this.app.vault.modify(tomorrowFile, "");
+    return this.app.vault.getMarkdownFiles()
+      .filter((file) => file.path.startsWith(`${SPACES_FOLDER_PATH}/`))
+      .sort((a, b) => a.basename.localeCompare(b.basename))
+      .map((file) => ({
+        name: file.basename,
+        path: file.path
+      }));
   }
 
-  async endDay() {
-    const todayFile = await this.getTodoFile();
-    const tomorrowFile = await this.getOrCreateFile(TOMORROW_FILE_PATH);
-    const archiveFile = await this.getOrCreateFile(`${ARCHIVE_FOLDER_PATH}/${formatDate(new Date())}.md`);
-    const todayContent = await this.app.vault.read(todayFile);
-    const tasks = parseTasks(todayContent);
-    const completedLines = tasks
-      .filter((task) => task.completed)
-      .map((task) => `- [x] ${task.text}`);
-    const incompleteLines = tasks
-      .filter((task) => !task.completed)
-      .map((task) => `- [ ] ${task.text}`);
+  isManagedTaskPath(path: string) {
+    return path === POCKET_FILE_PATH || path.startsWith(`${SPACES_FOLDER_PATH}/`);
+  }
 
-    if (completedLines.length > 0) {
-      await this.appendTaskLines(archiveFile, completedLines);
+  getDisplayName(path: string) {
+    if (path === POCKET_FILE_PATH) return "Pocket";
+
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) return file.basename;
+
+    return path.split("/").pop()?.replace(/\.md$/, "") ?? "Space";
+  }
+
+  async assignTaskToSpace(task: Task, space: SpaceFile) {
+    const pocketFile = await this.getOrCreateFile(POCKET_FILE_PATH);
+    const spaceFile = await this.getOrCreateFile(space.path);
+
+    await this.app.vault.process(pocketFile, (content) => {
+      const lines = content.split("\n");
+      const line = findTaskLine(content, task);
+
+      if (line === null) return content;
+
+      lines.splice(line, 1);
+      return lines.join("\n");
+    });
+
+    await this.appendTaskLines(spaceFile, [`- [ ] ${task.text}`]);
+  }
+
+  async archiveCompletedNow() {
+    const today = formatDate(new Date());
+    await this.archiveCompletedTasks(today);
+    this.settings.lastArchiveDate = today;
+    await this.saveSettings();
+  }
+
+  async archiveCompletedIfNeeded() {
+    const today = formatDate(new Date());
+    if (this.settings.lastArchiveDate === today) return;
+
+    await this.archiveCompletedTasks(today);
+    this.settings.lastArchiveDate = today;
+    await this.saveSettings();
+  }
+
+  private async archiveCompletedTasks(archiveDate: string) {
+    const sources = [
+      { name: "Pocket", file: await this.getOrCreateFile(POCKET_FILE_PATH) },
+      ...(await this.listSpaces()).map((space) => ({
+        name: space.name,
+        file: this.app.vault.getAbstractFileByPath(space.path)
+      }))
+    ];
+    const sections: { name: string; lines: string[] }[] = [];
+
+    for (const source of sources) {
+      if (!(source.file instanceof TFile)) continue;
+
+      const movedLines: string[] = [];
+      await this.app.vault.process(source.file, (content) => {
+        const nextLines: string[] = [];
+
+        for (const line of content.split("\n")) {
+          const match = line.match(TASK_LINE);
+
+          if (match && match[2].toLowerCase() === "x") {
+            movedLines.push(`- [x] ${match[3]}`);
+            continue;
+          }
+
+          nextLines.push(line);
+        }
+
+        return trimTrailingBlankLines(nextLines).join("\n");
+      });
+
+      if (movedLines.length > 0) {
+        sections.push({ name: source.name, lines: movedLines });
+      }
     }
 
-    if (incompleteLines.length > 0) {
-      await this.appendTaskLines(tomorrowFile, incompleteLines);
-    }
+    if (sections.length === 0) return;
 
-    await this.app.vault.modify(todayFile, "");
+    const archiveFile = await this.getOrCreateFile(`${ARCHIVE_FOLDER_PATH}/${archiveDate}.md`);
+    await this.appendArchiveSections(archiveFile, sections);
+  }
+
+  private async appendArchiveSections(file: TFile, sections: { name: string; lines: string[] }[]) {
+    await this.app.vault.process(file, (content) => {
+      const existing = content.trimEnd();
+      const next = sections
+        .map((section) => `## ${section.name}\n${section.lines.join("\n")}`)
+        .join("\n\n");
+
+      return existing.length > 0 ? `${existing}\n\n${next}\n` : `${next}\n`;
+    });
   }
 
   private async appendTaskLines(file: TFile, lines: string[]) {
@@ -188,7 +291,7 @@ export default class AtonalToDoPlugin extends Plugin {
   }
 
   private async ensureFolder(path: string) {
-    const parts = path.split("/").filter(Boolean);
+    const parts = normalizePath(path).split("/").filter(Boolean);
     let current = "";
 
     for (const part of parts) {
@@ -207,6 +310,9 @@ class AtonalToDoView extends ItemView {
   private plugin: AtonalToDoPlugin;
   private tasks: Task[] = [];
   private file: TFile | null = null;
+  private currentPath = POCKET_FILE_PATH;
+  private titleEl: HTMLElement | null = null;
+  private spacesEl: HTMLElement | null = null;
   private listEl: HTMLElement | null = null;
   private inputEl: HTMLInputElement | null = null;
   private dragState: DragState | null = null;
@@ -232,21 +338,24 @@ class AtonalToDoView extends ItemView {
   }
 
   async onOpen() {
+    this.currentPath = this.plugin.activePath;
     this.contentEl.empty();
     this.contentEl.addClass("atonal-todo-view");
 
     const shell = this.contentEl.createDiv({ cls: "atonal-todo-shell" });
+    this.spacesEl = shell.createDiv({ cls: "atonal-todo-spaces" });
+
     const header = shell.createDiv({ cls: "atonal-todo-header" });
-    header.createEl("h1", { text: "Today" });
-    const endDayButton = header.createEl("button", {
+    this.titleEl = header.createEl("h1", { text: this.plugin.getDisplayName(this.currentPath) });
+    const archiveButton = header.createEl("button", {
       cls: "atonal-todo-end-day",
-      text: "End Day",
+      text: "Archive Done",
       attr: {
         type: "button"
       }
     });
-    endDayButton.addEventListener("click", () => {
-      void this.endDay();
+    archiveButton.addEventListener("click", () => {
+      void this.archiveDone();
     });
 
     this.listEl = shell.createDiv({ cls: "atonal-todo-list" });
@@ -256,7 +365,7 @@ class AtonalToDoView extends ItemView {
       cls: "atonal-todo-input",
       attr: {
         type: "text",
-        placeholder: "New reminder"
+        placeholder: "Capture a task"
       }
     });
 
@@ -268,7 +377,7 @@ class AtonalToDoView extends ItemView {
 
     this.registerEvent(
       this.plugin.app.vault.on("modify", (file) => {
-        if (file.path !== TODO_FILE_PATH || this.isWriting) return;
+        if (file.path !== this.currentPath || this.isWriting) return;
 
         if (this.reloadTimer !== null) {
           window.clearTimeout(this.reloadTimer);
@@ -281,7 +390,8 @@ class AtonalToDoView extends ItemView {
       })
     );
 
-    await this.plugin.promoteTomorrowIfTodayIsEmpty();
+    await this.plugin.archiveCompletedIfNeeded();
+    await this.renderSpaces();
     await this.loadTasks();
   }
 
@@ -294,10 +404,45 @@ class AtonalToDoView extends ItemView {
     this.contentEl.empty();
   }
 
+  private async setCurrentPath(path: string) {
+    this.currentPath = normalizePath(path);
+    this.plugin.activePath = this.currentPath;
+    await this.renderSpaces();
+    await this.loadTasks();
+  }
+
+  private async renderSpaces() {
+    if (!this.spacesEl) return;
+
+    this.spacesEl.empty();
+    this.renderSpaceButton("Pocket", POCKET_FILE_PATH);
+
+    for (const space of await this.plugin.listSpaces()) {
+      this.renderSpaceButton(space.name, space.path);
+    }
+  }
+
+  private renderSpaceButton(label: string, path: string) {
+    if (!this.spacesEl) return;
+
+    const button = this.spacesEl.createEl("button", {
+      cls: "atonal-todo-space",
+      text: label,
+      attr: {
+        type: "button"
+      }
+    });
+    button.toggleClass("is-active", normalizePath(path) === this.currentPath);
+    button.addEventListener("click", () => {
+      void this.setCurrentPath(path);
+    });
+  }
+
   private async loadTasks() {
-    this.file = await this.plugin.getTodoFile();
+    this.file = await this.plugin.getOrCreateFile(this.currentPath);
     const content = await this.plugin.app.vault.read(this.file);
     this.tasks = parseTasks(content);
+    this.titleEl?.setText(this.plugin.getDisplayName(this.currentPath));
     this.renderTasks();
   }
 
@@ -309,7 +454,7 @@ class AtonalToDoView extends ItemView {
     if (this.tasks.length === 0) {
       this.listEl.createDiv({
         cls: "atonal-todo-empty",
-        text: "No reminders yet."
+        text: "No tasks here yet."
       });
       return;
     }
@@ -330,6 +475,7 @@ class AtonalToDoView extends ItemView {
     for (const task of tasks) {
       const row = group.createDiv({ cls: "atonal-todo-task" });
       row.toggleClass("is-complete", task.completed);
+      row.toggleClass("has-assign", this.currentPath === POCKET_FILE_PATH);
       row.setAttr("data-task-line", String(task.line));
       row.setAttr("data-task-completed", String(task.completed));
       this.registerDragHandlers(row, task);
@@ -353,6 +499,20 @@ class AtonalToDoView extends ItemView {
         this.editTask(task, textEl);
       });
 
+      if (this.currentPath === POCKET_FILE_PATH) {
+        const assignButton = row.createEl("button", {
+          cls: "atonal-todo-assign",
+          text: "Assign to...",
+          attr: {
+            type: "button",
+            "aria-label": "Assign to Space"
+          }
+        });
+        assignButton.addEventListener("click", (event) => {
+          void this.showAssignMenu(task, event);
+        });
+      }
+
       const deleteButton = row.createEl("button", {
         cls: "atonal-todo-delete",
         text: "×",
@@ -364,6 +524,23 @@ class AtonalToDoView extends ItemView {
         void this.deleteTask(task, row);
       });
     }
+  }
+
+  private async showAssignMenu(task: Task, event: MouseEvent) {
+    const spaces = await this.plugin.listSpaces();
+    const menu = new Menu();
+
+    for (const space of spaces) {
+      menu.addItem((item) => {
+        item
+          .setTitle(space.name)
+          .onClick(() => {
+            void this.assignTask(task, space);
+          });
+      });
+    }
+
+    menu.showAtMouseEvent(event);
   }
 
   private registerDragHandlers(row: HTMLElement, task: Task) {
@@ -535,7 +712,7 @@ class AtonalToDoView extends ItemView {
     const text = this.inputEl?.value.trim();
     if (!text || !this.file) return;
 
-    await this.writeTodoFile((content) => {
+    await this.writeCurrentFile((content) => {
       const suffix = content.length > 0 && !content.startsWith("\n") ? "\n" : "";
       return `- [ ] ${text}${suffix}${content}`;
     });
@@ -547,11 +724,16 @@ class AtonalToDoView extends ItemView {
     await this.loadTasks();
   }
 
-  private async endDay() {
-    if (!this.file) return;
+  private async archiveDone() {
+    await this.plugin.archiveCompletedNow();
+    new Notice("Completed tasks archived.");
+    await this.loadTasks();
+  }
 
-    await this.plugin.endDay();
-    new Notice("AtonalToDo day ended.");
+  private async assignTask(task: Task, space: SpaceFile) {
+    if (this.currentPath !== POCKET_FILE_PATH) return;
+
+    await this.plugin.assignTaskToSpace(task, space);
     await this.loadTasks();
   }
 
@@ -561,7 +743,7 @@ class AtonalToDoView extends ItemView {
     row.addClass(task.completed ? "is-restoring" : "is-finishing");
     await delay(360);
 
-    await this.writeTodoFile((content) => {
+    await this.writeCurrentFile((content) => {
       const lines = content.split("\n");
       const line = findTaskLine(content, task);
 
@@ -584,7 +766,7 @@ class AtonalToDoView extends ItemView {
     row.addClass("is-removing");
     await delay(190);
 
-    await this.writeTodoFile((content) => {
+    await this.writeCurrentFile((content) => {
       const lines = content.split("\n");
       const line = findTaskLine(content, task);
 
@@ -642,7 +824,7 @@ class AtonalToDoView extends ItemView {
   private async renameTask(task: Task, nextText: string) {
     if (!this.file) return;
 
-    await this.writeTodoFile((content) => {
+    await this.writeCurrentFile((content) => {
       const lines = content.split("\n");
       const line = findTaskLine(content, task);
 
@@ -661,7 +843,7 @@ class AtonalToDoView extends ItemView {
   private async reorderTask(task: Task, targetIndex: number) {
     if (!this.file) return;
 
-    await this.writeTodoFile((content) => {
+    await this.writeCurrentFile((content) => {
       const lines = content.split("\n");
       const originalLines = lines.slice();
       const tasks = parseTasks(content);
@@ -678,7 +860,7 @@ class AtonalToDoView extends ItemView {
       const boundedIndex = Math.max(0, Math.min(targetIndex, nextGroup.length));
       nextGroup.splice(boundedIndex, 0, moving);
 
-      if (nextGroup.every((task, index) => task.line === group[index].line)) {
+      if (nextGroup.every((nextTask, index) => nextTask.line === group[index].line)) {
         return content;
       }
 
@@ -692,7 +874,7 @@ class AtonalToDoView extends ItemView {
     await this.loadTasks();
   }
 
-  private async writeTodoFile(update: (content: string) => string) {
+  private async writeCurrentFile(update: (content: string) => string) {
     if (!this.file) return;
 
     this.isWriting = true;
@@ -720,19 +902,6 @@ function parseTasks(content: string): Task[] {
   });
 }
 
-function normalizeTaskBlock(content: string) {
-  const lines = parseTasks(content).map((task) => `- [${task.completed ? "x" : " "}] ${task.text}`);
-  return lines.length > 0 ? `${lines.join("\n")}\n` : "";
-}
-
-function formatDate(date: Date) {
-  const year = String(date.getFullYear());
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
 function findTaskLine(content: string, task: Task): number | null {
   const lines = content.split("\n");
   const currentLine = lines[task.line];
@@ -751,6 +920,24 @@ function lineMatchesTask(line: string | undefined, task: Task) {
   if (!match) return false;
 
   return match[3] === task.text && (match[2].toLowerCase() === "x") === task.completed;
+}
+
+function trimTrailingBlankLines(lines: string[]) {
+  const nextLines = lines.slice();
+
+  while (nextLines.length > 0 && nextLines[nextLines.length - 1].trim() === "") {
+    nextLines.pop();
+  }
+
+  return nextLines;
+}
+
+function formatDate(date: Date) {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function delay(ms: number) {

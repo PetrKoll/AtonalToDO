@@ -1,6 +1,6 @@
 {
   "name": "atonal-todo",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "A beautiful visual todo frontend for Obsidian.",
   "main": "main.js",
   "scripts": {

@@ -28,6 +28,38 @@
   order: 0;
 }
 
+.atonal-todo-spaces {
+  display: flex;
+  gap: 8px;
+  margin: -4px -18px 0;
+  overflow-x: auto;
+  padding: 0 18px 2px;
+  scrollbar-width: none;
+}
+
+.atonal-todo-spaces::-webkit-scrollbar {
+  display: none;
+}
+
+.atonal-todo-space {
+  appearance: none;
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, var(--atonal-border) 58%, transparent) !important;
+  border-radius: 8px;
+  box-shadow: none !important;
+  color: var(--atonal-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 13px;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.atonal-todo-space.is-active {
+  background: var(--background-secondary) !important;
+  color: var(--text-normal);
+}
+
 .atonal-todo-header h1 {
   color: var(--text-normal);
   font-size: 32px;
@@ -106,13 +138,28 @@
   user-select: none;
 }
 
+.atonal-todo-task.has-assign {
+  grid-template-columns: 28px minmax(0, 1fr) auto 32px;
+}
+
 .atonal-todo-checkbox,
+.atonal-todo-assign,
 .atonal-todo-delete {
   appearance: none;
   background: transparent !important;
   box-shadow: none !important;
   cursor: pointer;
   margin: 0;
+}
+
+.atonal-todo-assign {
+  border: 0 !important;
+  color: var(--atonal-muted);
+  font-size: 12px;
+  min-height: 32px;
+  opacity: 0.55;
+  padding: 0;
+  white-space: nowrap;
 }
 
 .atonal-todo-checkbox {
@@ -305,6 +352,16 @@
   .atonal-todo-delete {
     opacity: 0;
     transition: opacity 120ms ease;
+  }
+
+  .atonal-todo-assign {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .atonal-todo-task:hover .atonal-todo-assign,
+  .atonal-todo-assign:focus-visible {
+    opacity: 0.55;
   }
 
   .atonal-todo-task:hover .atonal-todo-delete,

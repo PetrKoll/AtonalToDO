@@ -2,14 +2,14 @@
 
 AtonalToDo is a simple visual todo frontend for Obsidian.
 
-It stores tasks as normal Markdown checkboxes in `Desk/Today.md`:
+It stores tasks as normal Markdown checkboxes in Pocket and Space notes:
 
 ```md
 - [ ] Buy milk
 - [x] Water the plants
 ```
 
-The plugin adds a clean custom view for reading, adding, completing, and deleting today's tasks without adding hidden markers or custom syntax to your notes.
+The plugin adds a clean custom view for capturing, organizing, completing, editing, and archiving tasks without hidden markers or custom syntax.
 
 ## Install for development
 
@@ -33,13 +33,25 @@ Open AtonalToDo from the ribbon icon or run the command:
 Open AtonalToDo
 ```
 
-Tasks are read from `Desk/Today.md`. Press Enter in the bottom input to append a new unchecked task. Click a task checkbox to toggle it between `- [ ]` and `- [x]`.
-
-For Obsidian widgets, bookmark the `Desk/Today.md` note. The plugin creates this note automatically and also provides the command:
+Pocket is the default capture list and lives at:
 
 ```text
-Open AtonalToDo note
+Desk/Pocket.md
 ```
+
+Spaces live in:
+
+```text
+Desk/Spaces/
+```
+
+Completed tasks are archived by date into:
+
+```text
+Desk/Archive/YYYY-MM-DD.md
+```
+
+Press Enter in the input to append a new unchecked task. Click a task checkbox to toggle it between `- [ ]` and `- [x]`. Use `Assign to...` from Pocket to send a task to a Space.
 
 ## Build
 
