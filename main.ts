@@ -11,6 +11,8 @@ type Task = {
 };
 
 export default class AtonalToDoPlugin extends Plugin {
+  private isRedirectingTodoFile = false;
+
   async onload() {
     this.registerView(
       VIEW_TYPE_ATONAL_TODO,
@@ -37,6 +39,21 @@ export default class AtonalToDoPlugin extends Plugin {
       }
     });
 
+    this.registerEvent(
+      this.app.workspace.on("file-open", (file) => {
+        if (file?.path !== TODO_FILE_PATH || this.isRedirectingTodoFile) {
+          return;
+        }
+
+        this.isRedirectingTodoFile = true;
+        window.setTimeout(() => {
+          void this.openView(true).finally(() => {
+            this.isRedirectingTodoFile = false;
+          });
+        }, 0);
+      })
+    );
+
     void this.getTodoFile();
   }
 
@@ -44,10 +61,10 @@ export default class AtonalToDoPlugin extends Plugin {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_ATONAL_TODO);
   }
 
-  async openView() {
+  async openView(reuseActiveLeaf = false) {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_ATONAL_TODO);
 
-    const leaf = this.app.workspace.getLeaf(true);
+    const leaf = this.app.workspace.getLeaf(!reuseActiveLeaf);
     if (!leaf) {
       new Notice("Could not open AtonalToDo.");
       return;
@@ -204,7 +221,7 @@ class AtonalToDoView extends ItemView {
 
       const deleteButton = row.createEl("button", {
         cls: "atonal-todo-delete",
-        text: "Delete",
+        text: "×",
         attr: {
           "aria-label": "Delete task"
         }
