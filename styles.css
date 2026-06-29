@@ -198,6 +198,27 @@
   color: var(--atonal-muted);
 }
 
+@media (hover: none), (pointer: coarse) {
+  .atonal-todo-view {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+  }
+
+  .atonal-todo-shell {
+    height: auto;
+    min-height: 100%;
+    padding-bottom: 24px;
+  }
+
+  .atonal-todo-list {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+}
+
 @media (hover: hover) and (pointer: fine) {
   .atonal-todo-shell {
     max-width: 680px;
