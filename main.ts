@@ -40,16 +40,14 @@ const DEFAULT_SETTINGS: AtonalToDoSettings = {
 export default class AtonalToDoPlugin extends Plugin {
   settings: AtonalToDoSettings = DEFAULT_SETTINGS;
   activePath = POCKET_FILE_PATH;
-  private isRedirectingManagedFile = false;
-  private allowRawManagedOpenOnce = false;
 
   async onload() {
-    await this.loadSettings();
-
     this.registerView(
       VIEW_TYPE_ATONAL_TODO,
       (leaf) => new AtonalToDoView(leaf, this)
     );
+
+    await this.loadSettings();
 
     this.addRibbonIcon("check-square", "Open AtonalToDo", () => {
       void this.openView();
@@ -70,26 +68,6 @@ export default class AtonalToDoPlugin extends Plugin {
         void this.openPocketNote();
       }
     });
-
-    this.registerEvent(
-      this.app.workspace.on("file-open", (file) => {
-        if (this.allowRawManagedOpenOnce) {
-          this.allowRawManagedOpenOnce = false;
-          return;
-        }
-
-        if (!file || !this.isManagedTaskPath(file.path) || this.isRedirectingManagedFile) {
-          return;
-        }
-
-        this.isRedirectingManagedFile = true;
-        window.setTimeout(() => {
-          void this.openView(file.path, true).finally(() => {
-            this.isRedirectingManagedFile = false;
-          });
-        }, 0);
-      })
-    );
   }
 
   onunload() {
@@ -97,7 +75,12 @@ export default class AtonalToDoPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    try {
+      this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    } catch (error) {
+      console.error("AtonalToDo could not load settings", error);
+      this.settings = Object.assign({}, DEFAULT_SETTINGS);
+    }
   }
 
   async saveSettings() {
@@ -127,7 +110,6 @@ export default class AtonalToDoPlugin extends Plugin {
       return;
     }
 
-    this.allowRawManagedOpenOnce = true;
     await leaf.openFile(file);
     this.app.workspace.revealLeaf(leaf);
   }
@@ -356,6 +338,10 @@ class AtonalToDoView extends ItemView {
     });
 
     this.listEl = shell.createDiv({ cls: "atonal-todo-list" });
+    this.listEl.createDiv({
+      cls: "atonal-todo-empty",
+      text: "Loading Pocket..."
+    });
 
     const composer = shell.createDiv({ cls: "atonal-todo-composer" });
     this.inputEl = composer.createEl("input", {
@@ -414,6 +400,12 @@ class AtonalToDoView extends ItemView {
       await this.loadTasks();
     } catch (error) {
       console.error("AtonalToDo failed to initialize", error);
+      const message = error instanceof Error ? error.message : String(error);
+      this.listEl?.empty();
+      this.listEl?.createDiv({
+        cls: "atonal-todo-empty",
+        text: `AtonalToDo could not initialize Pocket: ${message}`
+      });
       new Notice("AtonalToDo could not initialize Pocket.");
     }
   }

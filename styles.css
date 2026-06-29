@@ -5,7 +5,9 @@
   --atonal-accent: var(--interactive-accent);
   background: var(--atonal-bg);
   box-sizing: border-box;
+  color: var(--text-normal);
   height: 100%;
+  min-height: 100%;
   overflow: hidden;
 }
 
