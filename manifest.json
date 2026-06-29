@@ -1,0 +1,10 @@
+{
+  "id": "atonal-todo",
+  "name": "AtonalToDo",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "A beautiful visual todo frontend for Obsidian Daily Notes.",
+  "author": "Petr Kollarcik",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

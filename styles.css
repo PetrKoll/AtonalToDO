@@ -1,0 +1,161 @@
+.atonal-todo-view {
+  --atonal-bg: var(--background-primary);
+  --atonal-muted: var(--text-muted);
+  --atonal-border: var(--background-modifier-border);
+  --atonal-accent: var(--interactive-accent);
+  background: var(--atonal-bg);
+}
+
+.atonal-todo-shell {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100%;
+  padding: 28px 18px 0;
+}
+
+.atonal-todo-header h1 {
+  color: var(--text-normal);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.atonal-todo-list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.atonal-todo-empty {
+  color: var(--atonal-muted);
+  font-size: 15px;
+  padding: 18px 2px;
+}
+
+.atonal-todo-task {
+  align-items: center;
+  border-bottom: 1px solid var(--atonal-border);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  min-height: 52px;
+  padding: 7px 0;
+}
+
+.atonal-todo-checkbox,
+.atonal-todo-delete {
+  appearance: none;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  margin: 0;
+}
+
+.atonal-todo-checkbox {
+  border: 1.5px solid var(--atonal-muted);
+  border-radius: 50%;
+  height: 24px;
+  padding: 0;
+  position: relative;
+  width: 24px;
+}
+
+.atonal-todo-checkbox[aria-pressed="true"] {
+  background: var(--atonal-accent);
+  border-color: var(--atonal-accent);
+}
+
+.atonal-todo-checkbox[aria-pressed="true"]::after {
+  border-bottom: 2px solid var(--text-on-accent);
+  border-right: 2px solid var(--text-on-accent);
+  content: "";
+  height: 10px;
+  left: 8px;
+  position: absolute;
+  top: 4px;
+  transform: rotate(45deg);
+  width: 5px;
+}
+
+.atonal-todo-task-text {
+  color: var(--text-normal);
+  font-size: 17px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.atonal-todo-task.is-complete .atonal-todo-task-text {
+  color: var(--atonal-muted);
+  text-decoration: line-through;
+}
+
+.atonal-todo-delete {
+  border: 0;
+  color: var(--atonal-muted);
+  font-size: 13px;
+  min-height: 36px;
+  opacity: 0.7;
+  padding: 0 4px;
+}
+
+.atonal-todo-delete:focus-visible {
+  opacity: 1;
+}
+
+.atonal-todo-composer {
+  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+  bottom: var(--mobile-toolbar-height, 0);
+  box-sizing: border-box;
+  margin: auto -18px 0;
+  padding: 12px 18px calc(16px + env(safe-area-inset-bottom));
+  position: sticky;
+  z-index: 2;
+}
+
+.atonal-todo-input {
+  background: var(--background-secondary);
+  border: 1px solid var(--atonal-border);
+  border-radius: 14px;
+  box-shadow: none;
+  box-sizing: border-box;
+  color: var(--text-normal);
+  font-size: 17px;
+  min-height: 48px;
+  padding: 0 16px;
+  width: 100%;
+}
+
+.atonal-todo-input::placeholder {
+  color: var(--atonal-muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .atonal-todo-shell {
+    margin: 0 auto;
+    max-width: 680px;
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+
+  .atonal-todo-delete {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .atonal-todo-task:hover .atonal-todo-delete,
+  .atonal-todo-delete:focus-visible {
+    opacity: 0.7;
+  }
+
+  .atonal-todo-composer {
+    margin-left: -28px;
+    margin-right: -28px;
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+}
