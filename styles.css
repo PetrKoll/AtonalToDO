@@ -71,10 +71,17 @@
   gap: 12px;
   grid-template-columns: 28px minmax(0, 1fr) 32px;
   min-height: 58px;
+  opacity: 0;
   padding: 9px 12px;
   position: relative;
-  transition: opacity 120ms ease, transform 120ms ease;
+  transform: translateY(6px);
+  transition: background-color 140ms ease, border-color 140ms ease, opacity 160ms ease, transform 160ms ease;
   user-select: none;
+}
+
+.atonal-todo-task.is-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .atonal-todo-checkbox,
@@ -114,9 +121,23 @@
 
 .atonal-todo-task-text {
   color: var(--text-normal);
+  cursor: text;
   font-size: 17px;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.atonal-todo-edit {
+  appearance: none;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  box-sizing: border-box;
+  color: var(--text-normal);
+  font: inherit;
+  min-height: 32px;
+  padding: 0;
+  width: 100%;
 }
 
 .atonal-todo-task.is-complete .atonal-todo-task-text {
@@ -124,13 +145,34 @@
   text-decoration: line-through;
 }
 
-.atonal-todo-task.is-complete {
+.atonal-todo-task.is-complete.is-visible {
   opacity: 0.72;
+}
+
+.atonal-todo-task.is-lifted,
+.atonal-todo-task.is-dragging {
+  background: color-mix(in srgb, var(--background-secondary) 86%, var(--atonal-accent));
+  border-color: color-mix(in srgb, var(--atonal-accent) 35%, var(--atonal-border));
 }
 
 .atonal-todo-task.is-dragging {
   opacity: 0.82;
+  transition: opacity 120ms ease;
   z-index: 3;
+}
+
+.atonal-todo-task.is-finishing {
+  opacity: 0.58;
+  transform: scale(0.985);
+}
+
+.atonal-todo-task.is-restoring {
+  opacity: 1;
+}
+
+.atonal-todo-task.is-removing {
+  opacity: 0;
+  transform: translateX(12px) scale(0.98);
 }
 
 .atonal-todo-task.is-drop-before::before,

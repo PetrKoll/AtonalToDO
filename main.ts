@@ -16,6 +16,8 @@ type DragState = {
   pointerId: number;
   startY: number;
   currentY: number;
+  holdTimer: number | null;
+  ready: boolean;
   dragging: boolean;
 };
 
@@ -139,6 +141,9 @@ class AtonalToDoView extends ItemView {
   private listEl: HTMLElement | null = null;
   private inputEl: HTMLInputElement | null = null;
   private dragState: DragState | null = null;
+  private reloadTimer: number | null = null;
+  private isWriting = false;
+  private suppressNextTextClick = false;
 
   constructor(leaf: WorkspaceLeaf, plugin: AtonalToDoPlugin) {
     super(leaf);
@@ -182,10 +187,30 @@ class AtonalToDoView extends ItemView {
       }
     });
 
+    this.registerEvent(
+      this.plugin.app.vault.on("modify", (file) => {
+        if (file.path !== TODO_FILE_PATH || this.isWriting) return;
+
+        if (this.reloadTimer !== null) {
+          window.clearTimeout(this.reloadTimer);
+        }
+
+        this.reloadTimer = window.setTimeout(() => {
+          this.reloadTimer = null;
+          void this.loadTasks();
+        }, 250);
+      })
+    );
+
     await this.loadTasks();
   }
 
   async onClose() {
+    if (this.reloadTimer !== null) {
+      window.clearTimeout(this.reloadTimer);
+      this.reloadTimer = null;
+    }
+
     this.contentEl.empty();
   }
 
@@ -228,6 +253,7 @@ class AtonalToDoView extends ItemView {
       row.setAttr("data-task-line", String(task.line));
       row.setAttr("data-task-completed", String(task.completed));
       this.registerDragHandlers(row, task);
+      window.requestAnimationFrame(() => row.addClass("is-visible"));
 
       const checkbox = row.createEl("button", {
         cls: "atonal-todo-checkbox",
@@ -237,12 +263,15 @@ class AtonalToDoView extends ItemView {
       });
       checkbox.setAttr("aria-pressed", String(task.completed));
       checkbox.addEventListener("click", () => {
-        void this.toggleTask(task.line);
+        void this.toggleTask(task, row);
       });
 
-      row.createDiv({
+      const textEl = row.createDiv({
         cls: "atonal-todo-task-text",
         text: task.text
+      });
+      textEl.addEventListener("click", () => {
+        this.editTask(task, textEl);
       });
 
       const deleteButton = row.createEl("button", {
@@ -253,14 +282,16 @@ class AtonalToDoView extends ItemView {
         }
       });
       deleteButton.addEventListener("click", () => {
-        void this.deleteTask(task.line);
+        void this.deleteTask(task, row);
       });
     }
   }
 
   private registerDragHandlers(row: HTMLElement, task: Task) {
     row.addEventListener("pointerdown", (event) => {
-      if ((event.target as HTMLElement).closest("button")) return;
+      if ((event.target as HTMLElement).closest("button, input")) return;
+
+      const isTouch = event.pointerType === "touch";
 
       this.dragState = {
         task,
@@ -268,10 +299,22 @@ class AtonalToDoView extends ItemView {
         pointerId: event.pointerId,
         startY: event.clientY,
         currentY: event.clientY,
+        holdTimer: null,
+        ready: !isTouch,
         dragging: false
       };
 
-      row.setPointerCapture(event.pointerId);
+      if (isTouch) {
+        this.dragState.holdTimer = window.setTimeout(() => {
+          if (!this.dragState || this.dragState.pointerId !== event.pointerId) return;
+
+          this.dragState.ready = true;
+          row.addClass("is-lifted");
+          row.setPointerCapture(event.pointerId);
+        }, 180);
+      } else {
+        row.setPointerCapture(event.pointerId);
+      }
     });
 
     row.addEventListener("pointermove", (event) => {
@@ -280,6 +323,13 @@ class AtonalToDoView extends ItemView {
 
       const deltaY = event.clientY - state.startY;
       state.currentY = event.clientY;
+
+      if (!state.ready) {
+        if (Math.abs(deltaY) > 12) {
+          this.cancelDrag();
+        }
+        return;
+      }
 
       if (!state.dragging && Math.abs(deltaY) < 8) {
         return;
@@ -300,6 +350,20 @@ class AtonalToDoView extends ItemView {
     row.addEventListener("pointercancel", (event) => {
       void this.finishDrag(event.pointerId, this.dragState?.currentY ?? event.clientY);
     });
+  }
+
+  private cancelDrag() {
+    const state = this.dragState;
+    if (!state) return;
+
+    if (state.holdTimer !== null) {
+      window.clearTimeout(state.holdTimer);
+    }
+
+    state.row.removeClass("is-lifted", "is-dragging");
+    state.row.style.transform = "";
+    this.setDropTarget(null);
+    this.dragState = null;
   }
 
   private getDropPreview(clientY: number, state: DragState): { line: number; position: "before" | "after" } | null {
@@ -342,15 +406,27 @@ class AtonalToDoView extends ItemView {
     const state = this.dragState;
     if (!state || state.pointerId !== pointerId) return;
 
-    state.row.releasePointerCapture(pointerId);
-    state.row.removeClass("is-dragging");
+    if (state.holdTimer !== null) {
+      window.clearTimeout(state.holdTimer);
+    }
+
+    if (state.row.hasPointerCapture(pointerId)) {
+      state.row.releasePointerCapture(pointerId);
+    }
+
+    state.row.removeClass("is-lifted", "is-dragging");
     state.row.style.transform = "";
     this.setDropTarget(null);
     this.dragState = null;
 
     if (state.dragging) {
+      this.suppressNextTextClick = true;
+      window.setTimeout(() => {
+        this.suppressNextTextClick = false;
+      }, 0);
+
       const targetIndex = this.getDropIndex(clientY, state);
-      await this.reorderTask(state.task.line, state.task.completed, targetIndex);
+      await this.reorderTask(state.task, targetIndex);
     }
   }
 
@@ -372,7 +448,7 @@ class AtonalToDoView extends ItemView {
     const text = this.inputEl?.value.trim();
     if (!text || !this.file) return;
 
-    await this.plugin.app.vault.process(this.file, (content) => {
+    await this.writeTodoFile((content) => {
       const suffix = content.length > 0 && !content.startsWith("\n") ? "\n" : "";
       return `- [ ] ${text}${suffix}${content}`;
     });
@@ -384,13 +460,19 @@ class AtonalToDoView extends ItemView {
     await this.loadTasks();
   }
 
-  private async toggleTask(line: number) {
+  private async toggleTask(task: Task, row: HTMLElement) {
     if (!this.file) return;
 
-    await this.plugin.app.vault.process(this.file, (content) => {
-      const lines = content.split("\n");
-      const match = lines[line]?.match(TASK_LINE);
+    row.addClass(task.completed ? "is-restoring" : "is-finishing");
+    await delay(140);
 
+    await this.writeTodoFile((content) => {
+      const lines = content.split("\n");
+      const line = findTaskLine(content, task);
+
+      if (line === null) return content;
+
+      const match = lines[line]?.match(TASK_LINE);
       if (!match) return content;
 
       const nextState = match[2].toLowerCase() === "x" ? " " : "x";
@@ -401,11 +483,17 @@ class AtonalToDoView extends ItemView {
     await this.loadTasks();
   }
 
-  private async deleteTask(line: number) {
+  private async deleteTask(task: Task, row: HTMLElement) {
     if (!this.file) return;
 
-    await this.plugin.app.vault.process(this.file, (content) => {
+    row.addClass("is-removing");
+    await delay(140);
+
+    await this.writeTodoFile((content) => {
       const lines = content.split("\n");
+      const line = findTaskLine(content, task);
+
+      if (line === null) return content;
       if (!lines[line]?.match(TASK_LINE)) return content;
 
       lines.splice(line, 1);
@@ -415,15 +503,76 @@ class AtonalToDoView extends ItemView {
     await this.loadTasks();
   }
 
-  private async reorderTask(fromLine: number, completed: boolean, targetIndex: number) {
+  private editTask(task: Task, textEl: HTMLElement) {
+    if (this.suppressNextTextClick) return;
+    if (textEl.querySelector("input")) return;
+
+    const editor = textEl.createEl("input", {
+      cls: "atonal-todo-edit",
+      attr: {
+        type: "text",
+        "aria-label": "Edit task"
+      }
+    });
+
+    editor.value = task.text;
+    textEl.empty();
+    textEl.appendChild(editor);
+    editor.focus();
+    editor.select();
+
+    const save = () => {
+      const nextText = editor.value.trim();
+      if (!nextText || nextText === task.text) {
+        void this.loadTasks();
+        return;
+      }
+
+      void this.renameTask(task, nextText);
+    };
+
+    editor.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        editor.blur();
+      }
+
+      if (event.key === "Escape") {
+        void this.loadTasks();
+      }
+    });
+
+    editor.addEventListener("blur", save, { once: true });
+  }
+
+  private async renameTask(task: Task, nextText: string) {
     if (!this.file) return;
 
-    await this.plugin.app.vault.process(this.file, (content) => {
+    await this.writeTodoFile((content) => {
+      const lines = content.split("\n");
+      const line = findTaskLine(content, task);
+
+      if (line === null) return content;
+
+      const match = lines[line]?.match(TASK_LINE);
+      if (!match) return content;
+
+      lines[line] = `${match[1]}- [${match[2]}] ${nextText}`;
+      return lines.join("\n");
+    });
+
+    await this.loadTasks();
+  }
+
+  private async reorderTask(task: Task, targetIndex: number) {
+    if (!this.file) return;
+
+    await this.writeTodoFile((content) => {
       const lines = content.split("\n");
       const originalLines = lines.slice();
       const tasks = parseTasks(content);
-      const group = tasks.filter((task) => task.completed === completed);
-      const movingIndex = group.findIndex((task) => task.line === fromLine);
+      const group = tasks.filter((currentTask) => currentTask.completed === task.completed);
+      const currentLine = findTaskLine(content, task);
+      const movingIndex = currentLine === null ? -1 : group.findIndex((currentTask) => currentTask.line === currentLine);
 
       if (movingIndex === -1) {
         return content;
@@ -447,6 +596,20 @@ class AtonalToDoView extends ItemView {
 
     await this.loadTasks();
   }
+
+  private async writeTodoFile(update: (content: string) => string) {
+    if (!this.file) return;
+
+    this.isWriting = true;
+
+    try {
+      await this.plugin.app.vault.process(this.file, update);
+    } finally {
+      window.setTimeout(() => {
+        this.isWriting = false;
+      }, 300);
+    }
+  }
 }
 
 function parseTasks(content: string): Task[] {
@@ -460,4 +623,28 @@ function parseTasks(content: string): Task[] {
       completed: match[2].toLowerCase() === "x"
     }];
   });
+}
+
+function findTaskLine(content: string, task: Task): number | null {
+  const lines = content.split("\n");
+  const currentLine = lines[task.line];
+
+  if (lineMatchesTask(currentLine, task)) {
+    return task.line;
+  }
+
+  const fallbackLine = lines.findIndex((line) => lineMatchesTask(line, task));
+  return fallbackLine === -1 ? null : fallbackLine;
+}
+
+function lineMatchesTask(line: string | undefined, task: Task) {
+  const match = line?.match(TASK_LINE);
+
+  if (!match) return false;
+
+  return match[3] === task.text && (match[2].toLowerCase() === "x") === task.completed;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
