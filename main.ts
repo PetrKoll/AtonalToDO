@@ -2,6 +2,8 @@ import { ItemView, Notice, Plugin, TFile, WorkspaceLeaf, normalizePath } from "o
 
 const VIEW_TYPE_ATONAL_TODO = "atonal-todo-view";
 const TODO_FILE_PATH = "Desk/Today.md";
+const TOMORROW_FILE_PATH = "Desk/Tomorrow.md";
+const ARCHIVE_FOLDER_PATH = "Desk/Archive";
 const TASK_LINE = /^(\s*)-\s\[( |x|X)\]\s(.*)$/;
 
 type Task = {
@@ -118,6 +120,73 @@ export default class AtonalToDoPlugin extends Plugin {
     return this.app.vault.create(path, "");
   }
 
+  async getOrCreateFile(path: string): Promise<TFile> {
+    const normalizedPath = normalizePath(path);
+    const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+
+    if (existing instanceof TFile) {
+      return existing;
+    }
+
+    if (existing) {
+      throw new Error(`${normalizedPath} is not a note.`);
+    }
+
+    const folder = normalizedPath.split("/").slice(0, -1).join("/");
+    if (folder) {
+      await this.ensureFolder(folder);
+    }
+
+    return this.app.vault.create(normalizedPath, "");
+  }
+
+  async promoteTomorrowIfTodayIsEmpty() {
+    const todayFile = await this.getTodoFile();
+    const tomorrowFile = await this.getOrCreateFile(TOMORROW_FILE_PATH);
+    const todayContent = await this.app.vault.read(todayFile);
+    const tomorrowContent = await this.app.vault.read(tomorrowFile);
+
+    if (todayContent.trim().length > 0 || parseTasks(tomorrowContent).length === 0) {
+      return;
+    }
+
+    await this.app.vault.modify(todayFile, normalizeTaskBlock(tomorrowContent));
+    await this.app.vault.modify(tomorrowFile, "");
+  }
+
+  async endDay() {
+    const todayFile = await this.getTodoFile();
+    const tomorrowFile = await this.getOrCreateFile(TOMORROW_FILE_PATH);
+    const archiveFile = await this.getOrCreateFile(`${ARCHIVE_FOLDER_PATH}/${formatDate(new Date())}.md`);
+    const todayContent = await this.app.vault.read(todayFile);
+    const tasks = parseTasks(todayContent);
+    const completedLines = tasks
+      .filter((task) => task.completed)
+      .map((task) => `- [x] ${task.text}`);
+    const incompleteLines = tasks
+      .filter((task) => !task.completed)
+      .map((task) => `- [ ] ${task.text}`);
+
+    if (completedLines.length > 0) {
+      await this.appendTaskLines(archiveFile, completedLines);
+    }
+
+    if (incompleteLines.length > 0) {
+      await this.appendTaskLines(tomorrowFile, incompleteLines);
+    }
+
+    await this.app.vault.modify(todayFile, "");
+  }
+
+  private async appendTaskLines(file: TFile, lines: string[]) {
+    await this.app.vault.process(file, (content) => {
+      const existing = content.trimEnd();
+      const next = lines.join("\n");
+
+      return existing.length > 0 ? `${existing}\n${next}\n` : `${next}\n`;
+    });
+  }
+
   private async ensureFolder(path: string) {
     const parts = path.split("/").filter(Boolean);
     let current = "";
@@ -169,6 +238,16 @@ class AtonalToDoView extends ItemView {
     const shell = this.contentEl.createDiv({ cls: "atonal-todo-shell" });
     const header = shell.createDiv({ cls: "atonal-todo-header" });
     header.createEl("h1", { text: "Today" });
+    const endDayButton = header.createEl("button", {
+      cls: "atonal-todo-end-day",
+      text: "End Day",
+      attr: {
+        type: "button"
+      }
+    });
+    endDayButton.addEventListener("click", () => {
+      void this.endDay();
+    });
 
     this.listEl = shell.createDiv({ cls: "atonal-todo-list" });
 
@@ -202,6 +281,7 @@ class AtonalToDoView extends ItemView {
       })
     );
 
+    await this.plugin.promoteTomorrowIfTodayIsEmpty();
     await this.loadTasks();
   }
 
@@ -467,6 +547,14 @@ class AtonalToDoView extends ItemView {
     await this.loadTasks();
   }
 
+  private async endDay() {
+    if (!this.file) return;
+
+    await this.plugin.endDay();
+    new Notice("AtonalToDo day ended.");
+    await this.loadTasks();
+  }
+
   private async toggleTask(task: Task, row: HTMLElement) {
     if (!this.file) return;
 
@@ -630,6 +718,19 @@ function parseTasks(content: string): Task[] {
       completed: match[2].toLowerCase() === "x"
     }];
   });
+}
+
+function normalizeTaskBlock(content: string) {
+  const lines = parseTasks(content).map((task) => `- [${task.completed ? "x" : " "}] ${task.text}`);
+  return lines.length > 0 ? `${lines.join("\n")}\n` : "";
+}
+
+function formatDate(date: Date) {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function findTaskLine(content: string, task: Task): number | null {

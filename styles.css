@@ -20,6 +20,14 @@
   width: 100%;
 }
 
+.atonal-todo-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  order: 0;
+}
+
 .atonal-todo-header h1 {
   color: var(--text-normal);
   font-size: 32px;
@@ -27,7 +35,26 @@
   letter-spacing: 0;
   line-height: 1.1;
   margin: 0;
-  order: 0;
+}
+
+.atonal-todo-end-day {
+  appearance: none;
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, var(--atonal-border) 70%, transparent) !important;
+  border-radius: 8px;
+  box-shadow: none !important;
+  color: var(--atonal-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 13px;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.atonal-todo-end-day:active,
+.atonal-todo-end-day:focus-visible {
+  color: var(--text-normal);
+  border-color: var(--atonal-border) !important;
 }
 
 .atonal-todo-list {
