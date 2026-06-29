@@ -35,6 +35,12 @@ Open AtonalToDo
 
 Tasks are read from `Desk/Today.md`. Press Enter in the bottom input to append a new unchecked task. Click a task checkbox to toggle it between `- [ ]` and `- [x]`.
 
+For Obsidian widgets, bookmark the `Desk/Today.md` note. The plugin creates this note automatically and also provides the command:
+
+```text
+Open AtonalToDo note
+```
+
 ## Build
 
 ```sh

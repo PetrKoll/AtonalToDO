@@ -28,6 +28,16 @@ export default class AtonalToDoPlugin extends Plugin {
         void this.openView();
       }
     });
+
+    this.addCommand({
+      id: "open-atonal-todo-note",
+      name: "Open AtonalToDo note",
+      callback: () => {
+        void this.openTodoFile();
+      }
+    });
+
+    void this.getTodoFile();
   }
 
   onunload() {
@@ -35,20 +45,28 @@ export default class AtonalToDoPlugin extends Plugin {
   }
 
   async openView() {
-    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_ATONAL_TODO)[0];
+    this.app.workspace.detachLeavesOfType(VIEW_TYPE_ATONAL_TODO);
 
-    if (existing) {
-      this.app.workspace.revealLeaf(existing);
-      return;
-    }
-
-    const leaf = this.app.workspace.getRightLeaf(false);
+    const leaf = this.app.workspace.getLeaf(true);
     if (!leaf) {
       new Notice("Could not open AtonalToDo.");
       return;
     }
 
     await leaf.setViewState({ type: VIEW_TYPE_ATONAL_TODO, active: true });
+    this.app.workspace.revealLeaf(leaf);
+  }
+
+  async openTodoFile() {
+    const file = await this.getTodoFile();
+    const leaf = this.app.workspace.getLeaf(true);
+
+    if (!leaf) {
+      new Notice("Could not open AtonalToDo note.");
+      return;
+    }
+
+    await leaf.openFile(file);
     this.app.workspace.revealLeaf(leaf);
   }
 
