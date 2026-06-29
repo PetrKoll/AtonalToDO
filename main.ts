@@ -45,8 +45,6 @@ export default class AtonalToDoPlugin extends Plugin {
 
   async onload() {
     await this.loadSettings();
-    await this.ensureWorkspaceFiles();
-    await this.archiveCompletedIfNeeded();
 
     this.registerView(
       VIEW_TYPE_ATONAL_TODO,
@@ -107,7 +105,6 @@ export default class AtonalToDoPlugin extends Plugin {
   }
 
   async openView(path = POCKET_FILE_PATH, reuseActiveLeaf = false) {
-    await this.ensureWorkspaceFiles();
     this.activePath = normalizePath(path);
     this.app.workspace.detachLeavesOfType(VIEW_TYPE_ATONAL_TODO);
 
@@ -390,9 +387,7 @@ class AtonalToDoView extends ItemView {
       })
     );
 
-    await this.plugin.archiveCompletedIfNeeded();
-    await this.renderSpaces();
-    await this.loadTasks();
+    await this.initializeView();
   }
 
   async onClose() {
@@ -409,6 +404,18 @@ class AtonalToDoView extends ItemView {
     this.plugin.activePath = this.currentPath;
     await this.renderSpaces();
     await this.loadTasks();
+  }
+
+  private async initializeView() {
+    try {
+      await this.plugin.ensureWorkspaceFiles();
+      await this.plugin.archiveCompletedIfNeeded();
+      await this.renderSpaces();
+      await this.loadTasks();
+    } catch (error) {
+      console.error("AtonalToDo failed to initialize", error);
+      new Notice("AtonalToDo could not initialize Pocket.");
+    }
   }
 
   private async renderSpaces() {
