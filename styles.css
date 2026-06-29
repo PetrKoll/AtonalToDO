@@ -128,9 +128,9 @@
   background: var(--atonal-bg);
   box-sizing: border-box;
   flex: 0 0 auto;
-  margin: 0 -18px;
+  margin: 0;
   order: 1;
-  padding: 0 18px 8px;
+  padding: 0 22px 8px;
 }
 
 .atonal-todo-input {
@@ -167,9 +167,7 @@
   }
 
   .atonal-todo-composer {
-    margin-left: -28px;
-    margin-right: -28px;
-    padding-left: 28px;
-    padding-right: 28px;
+    padding-left: 0;
+    padding-right: 0;
   }
 }
