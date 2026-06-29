@@ -15,9 +15,8 @@ type DragState = {
   row: HTMLElement;
   pointerId: number;
   startY: number;
+  currentY: number;
   dragging: boolean;
-  targetLine: number | null;
-  position: "before" | "after";
 };
 
 export default class AtonalToDoPlugin extends Plugin {
@@ -268,9 +267,8 @@ class AtonalToDoView extends ItemView {
         row,
         pointerId: event.pointerId,
         startY: event.clientY,
-        dragging: false,
-        targetLine: null,
-        position: "after"
+        currentY: event.clientY,
+        dragging: false
       };
 
       row.setPointerCapture(event.pointerId);
@@ -281,6 +279,7 @@ class AtonalToDoView extends ItemView {
       if (!state || state.pointerId !== event.pointerId) return;
 
       const deltaY = event.clientY - state.startY;
+      state.currentY = event.clientY;
 
       if (!state.dragging && Math.abs(deltaY) < 8) {
         return;
@@ -290,39 +289,40 @@ class AtonalToDoView extends ItemView {
       state.row.addClass("is-dragging");
       state.row.style.transform = `translateY(${deltaY}px)`;
 
-      const target = this.getDragTarget(event.clientY, state);
-      this.setDropTarget(target);
-
-      state.targetLine = target?.line ?? null;
-      state.position = target?.position ?? "after";
+      this.setDropTarget(this.getDropPreview(event.clientY, state));
       event.preventDefault();
     });
 
     row.addEventListener("pointerup", (event) => {
-      void this.finishDrag(event.pointerId);
+      void this.finishDrag(event.pointerId, event.clientY);
     });
 
     row.addEventListener("pointercancel", (event) => {
-      void this.finishDrag(event.pointerId);
+      void this.finishDrag(event.pointerId, this.dragState?.currentY ?? event.clientY);
     });
   }
 
-  private getDragTarget(clientY: number, state: DragState): { line: number; position: "before" | "after" } | null {
+  private getDropPreview(clientY: number, state: DragState): { line: number; position: "before" | "after" } | null {
     if (!this.listEl) return null;
 
     const rows = Array.from(this.listEl.querySelectorAll<HTMLElement>(".atonal-todo-task"))
       .filter((row) => row !== state.row && row.dataset.taskCompleted === String(state.task.completed));
 
+    if (rows.length === 0) return null;
+
     for (const row of rows) {
       const rect = row.getBoundingClientRect();
-      if (clientY < rect.top || clientY > rect.bottom) continue;
-
       const line = Number(row.dataset.taskLine);
-      const position = clientY < rect.top + rect.height / 2 ? "before" : "after";
-      return Number.isFinite(line) ? { line, position } : null;
+
+      if (!Number.isFinite(line)) continue;
+
+      if (clientY < rect.top + rect.height / 2) {
+        return { line, position: "before" };
+      }
     }
 
-    return null;
+    const lastLine = Number(rows[rows.length - 1].dataset.taskLine);
+    return Number.isFinite(lastLine) ? { line: lastLine, position: "after" } : null;
   }
 
   private setDropTarget(target: { line: number; position: "before" | "after" } | null) {
@@ -338,7 +338,7 @@ class AtonalToDoView extends ItemView {
     row?.addClass(target.position === "before" ? "is-drop-before" : "is-drop-after");
   }
 
-  private async finishDrag(pointerId: number) {
+  private async finishDrag(pointerId: number, clientY: number) {
     const state = this.dragState;
     if (!state || state.pointerId !== pointerId) return;
 
@@ -348,9 +348,24 @@ class AtonalToDoView extends ItemView {
     this.setDropTarget(null);
     this.dragState = null;
 
-    if (state.dragging && state.targetLine !== null && state.targetLine !== state.task.line) {
-      await this.reorderTask(state.task.line, state.targetLine, state.position);
+    if (state.dragging) {
+      const targetIndex = this.getDropIndex(clientY, state);
+      await this.reorderTask(state.task.line, state.task.completed, targetIndex);
     }
+  }
+
+  private getDropIndex(clientY: number, state: DragState): number {
+    if (!this.listEl) return 0;
+
+    const rows = Array.from(this.listEl.querySelectorAll<HTMLElement>(".atonal-todo-task"))
+      .filter((row) => row !== state.row && row.dataset.taskCompleted === String(state.task.completed));
+
+    const index = rows.findIndex((row) => {
+      const rect = row.getBoundingClientRect();
+      return clientY < rect.top + rect.height / 2;
+    });
+
+    return index === -1 ? rows.length : index;
   }
 
   private async addTask() {
@@ -400,29 +415,33 @@ class AtonalToDoView extends ItemView {
     await this.loadTasks();
   }
 
-  private async reorderTask(fromLine: number, targetLine: number, position: "before" | "after") {
+  private async reorderTask(fromLine: number, completed: boolean, targetIndex: number) {
     if (!this.file) return;
 
     await this.plugin.app.vault.process(this.file, (content) => {
       const lines = content.split("\n");
-      const moving = lines[fromLine];
+      const originalLines = lines.slice();
+      const tasks = parseTasks(content);
+      const group = tasks.filter((task) => task.completed === completed);
+      const movingIndex = group.findIndex((task) => task.line === fromLine);
 
-      if (!moving?.match(TASK_LINE) || !lines[targetLine]?.match(TASK_LINE)) {
+      if (movingIndex === -1) {
         return content;
       }
 
-      lines.splice(fromLine, 1);
+      const nextGroup = group.slice();
+      const [moving] = nextGroup.splice(movingIndex, 1);
+      const boundedIndex = Math.max(0, Math.min(targetIndex, nextGroup.length));
+      nextGroup.splice(boundedIndex, 0, moving);
 
-      let insertAt = targetLine;
-      if (fromLine < targetLine) {
-        insertAt -= 1;
+      if (nextGroup.every((task, index) => task.line === group[index].line)) {
+        return content;
       }
 
-      if (position === "after") {
-        insertAt += 1;
+      for (let index = 0; index < group.length; index += 1) {
+        lines[group[index].line] = originalLines[nextGroup[index].line];
       }
 
-      lines.splice(insertAt, 0, moving);
       return lines.join("\n");
     });
 

@@ -177,14 +177,15 @@
   flex: 0 0 auto;
   margin: 0;
   order: 1;
-  padding: 0 4px 8px;
+  padding: 0 18px 8px;
 }
 
 .atonal-todo-input {
-  background: var(--background-secondary);
-  border: 1px solid var(--atonal-border);
-  border-radius: 8px;
-  box-shadow: none;
+  appearance: none;
+  background: var(--background-secondary) !important;
+  border: 1px solid var(--atonal-border) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
   box-sizing: border-box;
   color: var(--text-normal);
   font-size: 17px;
