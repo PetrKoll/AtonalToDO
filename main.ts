@@ -317,63 +317,74 @@ class AtonalToDoView extends ItemView {
   }
 
   async onOpen() {
-    this.currentPath = this.plugin.activePath;
-    this.contentEl.empty();
-    this.contentEl.addClass("atonal-todo-view");
+    try {
+      this.currentPath = this.plugin.activePath;
+      this.contentEl.empty();
+      this.contentEl.addClass("atonal-todo-view");
+      this.contentEl.setAttr("style", "display:block; min-height:100%; color:var(--text-normal);");
 
-    const shell = this.contentEl.createDiv({ cls: "atonal-todo-shell" });
-    this.spacesEl = shell.createDiv({ cls: "atonal-todo-spaces" });
+      const shell = this.contentEl.createDiv({ cls: "atonal-todo-shell" });
+      shell.setAttr("style", "display:flex; flex-direction:column; gap:18px; min-height:100%; padding:28px 18px 24px;");
 
-    const header = shell.createDiv({ cls: "atonal-todo-header" });
-    this.titleEl = header.createEl("h1", { text: this.plugin.getDisplayName(this.currentPath) });
-    const archiveButton = header.createEl("button", {
-      cls: "atonal-todo-end-day",
-      text: "Archive Done",
-      attr: {
-        type: "button"
-      }
-    });
-    archiveButton.addEventListener("click", () => {
-      void this.archiveDone();
-    });
+      this.spacesEl = shell.createDiv({ cls: "atonal-todo-spaces" });
 
-    this.listEl = shell.createDiv({ cls: "atonal-todo-list" });
-    this.listEl.createDiv({
-      cls: "atonal-todo-empty",
-      text: "Loading Pocket..."
-    });
-
-    const composer = shell.createDiv({ cls: "atonal-todo-composer" });
-    this.inputEl = composer.createEl("input", {
-      cls: "atonal-todo-input",
-      attr: {
-        type: "text",
-        placeholder: "Capture a task"
-      }
-    });
-
-    this.inputEl.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        void this.addTask();
-      }
-    });
-
-    this.registerEvent(
-      this.plugin.app.vault.on("modify", (file) => {
-        if (file.path !== this.currentPath || this.isWriting) return;
-
-        if (this.reloadTimer !== null) {
-          window.clearTimeout(this.reloadTimer);
+      const header = shell.createDiv({ cls: "atonal-todo-header" });
+      this.titleEl = header.createEl("h1", { text: "Pocket" });
+      const archiveButton = header.createEl("button", {
+        cls: "atonal-todo-end-day",
+        text: "Archive Done",
+        attr: {
+          type: "button"
         }
+      });
+      archiveButton.addEventListener("click", () => {
+        void this.archiveDone();
+      });
 
-        this.reloadTimer = window.setTimeout(() => {
-          this.reloadTimer = null;
-          void this.loadTasks();
-        }, 250);
-      })
-    );
+      const composer = shell.createDiv({ cls: "atonal-todo-composer" });
+      this.inputEl = composer.createEl("input", {
+        cls: "atonal-todo-input",
+        attr: {
+          type: "text",
+          placeholder: "Capture a task"
+        }
+      });
 
-    await this.initializeView();
+      this.inputEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          void this.addTask();
+        }
+      });
+
+      this.listEl = shell.createDiv({ cls: "atonal-todo-list" });
+      this.listEl.createDiv({
+        cls: "atonal-todo-empty",
+        text: "Loading Pocket..."
+      });
+
+      this.registerEvent(
+        this.plugin.app.vault.on("modify", (file) => {
+          if (file.path !== this.currentPath || this.isWriting) return;
+
+          if (this.reloadTimer !== null) {
+            window.clearTimeout(this.reloadTimer);
+          }
+
+          this.reloadTimer = window.setTimeout(() => {
+            this.reloadTimer = null;
+            void this.loadTasks();
+          }, 250);
+        })
+      );
+
+      await this.initializeView();
+    } catch (error) {
+      console.error("AtonalToDo onOpen failed", error);
+      this.contentEl.empty();
+      this.contentEl.createDiv({
+        text: `AtonalToDo view failed: ${error instanceof Error ? error.message : String(error)}`
+      }).setAttr("style", "padding:24px; color:var(--text-normal);");
+    }
   }
 
   async onClose() {
