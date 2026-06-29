@@ -1,7 +1,7 @@
 {
   "name": "atonal-todo",
   "version": "0.1.0",
-  "description": "A beautiful visual todo frontend for Obsidian Daily Notes.",
+  "description": "A beautiful visual todo frontend for Obsidian.",
   "main": "main.js",
   "scripts": {
     "build": "tsc --noEmit --skipLibCheck && esbuild main.ts --bundle --external:obsidian --format=cjs --target=es2018 --outfile=main.js"
@@ -9,11 +9,18 @@
   "keywords": [
     "obsidian",
     "plugin",
-    "todo",
-    "daily-notes"
+    "todo"
   ],
   "author": "Petr Kollarcik",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PetrKoll/AtonalToDO.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PetrKoll/AtonalToDO/issues"
+  },
+  "homepage": "https://github.com/PetrKoll/AtonalToDO#readme",
   "devDependencies": {
     "@types/node": "^20.14.10",
     "esbuild": "^0.23.0",
