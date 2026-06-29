@@ -1,17 +1,13 @@
 import { ItemView, Notice, Plugin, TFile, WorkspaceLeaf, normalizePath } from "obsidian";
 
 const VIEW_TYPE_ATONAL_TODO = "atonal-todo-view";
+const TODO_FILE_PATH = "Desk/Today.md";
 const TASK_LINE = /^(\s*)-\s\[( |x|X)\]\s(.*)$/;
 
 type Task = {
   line: number;
   text: string;
   completed: boolean;
-};
-
-type DailyNoteOptions = {
-  folder?: string;
-  format?: string;
 };
 
 export default class AtonalToDoPlugin extends Plugin {
@@ -56,8 +52,8 @@ export default class AtonalToDoPlugin extends Plugin {
     this.app.workspace.revealLeaf(leaf);
   }
 
-  async getDailyNote(): Promise<TFile> {
-    const path = this.getDailyNotePath();
+  async getTodoFile(): Promise<TFile> {
+    const path = normalizePath(TODO_FILE_PATH);
     const existing = this.app.vault.getAbstractFileByPath(path);
 
     if (existing instanceof TFile) {
@@ -89,25 +85,6 @@ export default class AtonalToDoPlugin extends Plugin {
 
       await this.app.vault.createFolder(current);
     }
-  }
-
-  private getDailyNotePath(): string {
-    const options = this.getDailyNoteOptions();
-    const format = options.format || "YYYY-MM-DD";
-    const fileName = `${formatDate(new Date(), format)}.md`;
-    const folder = options.folder?.trim();
-
-    return normalizePath(folder ? `${folder}/${fileName}` : fileName);
-  }
-
-  private getDailyNoteOptions(): DailyNoteOptions {
-    const internalPlugins = (this.app as unknown as {
-      internalPlugins?: {
-        plugins?: Record<string, { instance?: { options?: DailyNoteOptions } }>;
-      };
-    }).internalPlugins;
-
-    return internalPlugins?.plugins?.["daily-notes"]?.instance?.options ?? {};
   }
 }
 
@@ -168,7 +145,7 @@ class AtonalToDoView extends ItemView {
   }
 
   private async loadTasks() {
-    this.file = await this.plugin.getDailyNote();
+    this.file = await this.plugin.getTodoFile();
     const content = await this.plugin.app.vault.read(this.file);
     this.tasks = parseTasks(content);
     this.renderTasks();
@@ -279,27 +256,4 @@ function parseTasks(content: string): Task[] {
       completed: match[2].toLowerCase() === "x"
     }];
   });
-}
-
-function formatDate(date: Date, format: string): string {
-  if (window.moment) {
-    return window.moment(date).format(format);
-  }
-
-  const values: Record<string, string> = {
-    YYYY: String(date.getFullYear()),
-    YY: String(date.getFullYear()).slice(-2),
-    MM: String(date.getMonth() + 1).padStart(2, "0"),
-    M: String(date.getMonth() + 1),
-    DD: String(date.getDate()).padStart(2, "0"),
-    D: String(date.getDate())
-  };
-
-  return format.replace(/YYYY|YY|MM|M|DD|D/g, (token) => values[token]);
-}
-
-declare global {
-  interface Window {
-    moment?: (date?: Date) => { format: (format: string) => string };
-  }
 }

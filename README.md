@@ -1,8 +1,8 @@
 # AtonalToDo
 
-AtonalToDo is a simple visual todo frontend for Obsidian Daily Notes.
+AtonalToDo is a simple visual todo frontend for Obsidian.
 
-It stores tasks as normal Markdown checkboxes in today's Daily Note:
+It stores tasks as normal Markdown checkboxes in `Desk/Today.md`:
 
 ```md
 - [ ] Buy milk
@@ -33,7 +33,7 @@ Open AtonalToDo from the ribbon icon or run the command:
 Open AtonalToDo
 ```
 
-Tasks are read from today's Daily Note. Press Enter in the bottom input to append a new unchecked task. Click a task checkbox to toggle it between `- [ ]` and `- [x]`.
+Tasks are read from `Desk/Today.md`. Press Enter in the bottom input to append a new unchecked task. Click a task checkbox to toggle it between `- [ ]` and `- [x]`.
 
 ## Build
 
