@@ -253,7 +253,6 @@ class AtonalToDoView extends ItemView {
       row.setAttr("data-task-line", String(task.line));
       row.setAttr("data-task-completed", String(task.completed));
       this.registerDragHandlers(row, task);
-      window.requestAnimationFrame(() => row.addClass("is-visible"));
 
       const checkbox = row.createEl("button", {
         cls: "atonal-todo-checkbox",
@@ -344,7 +343,15 @@ class AtonalToDoView extends ItemView {
     });
 
     row.addEventListener("pointerup", (event) => {
+      const state = this.dragState;
+      const textEl = (event.target as HTMLElement).closest<HTMLElement>(".atonal-todo-task-text");
+      const shouldEdit = !!state && state.pointerId === event.pointerId && !state.dragging && !!textEl;
+
       void this.finishDrag(event.pointerId, event.clientY);
+
+      if (shouldEdit) {
+        this.editTask(task, textEl);
+      }
     });
 
     row.addEventListener("pointercancel", (event) => {
@@ -464,7 +471,7 @@ class AtonalToDoView extends ItemView {
     if (!this.file) return;
 
     row.addClass(task.completed ? "is-restoring" : "is-finishing");
-    await delay(140);
+    await delay(360);
 
     await this.writeTodoFile((content) => {
       const lines = content.split("\n");
@@ -487,7 +494,7 @@ class AtonalToDoView extends ItemView {
     if (!this.file) return;
 
     row.addClass("is-removing");
-    await delay(140);
+    await delay(190);
 
     await this.writeTodoFile((content) => {
       const lines = content.split("\n");
@@ -507,6 +514,8 @@ class AtonalToDoView extends ItemView {
     if (this.suppressNextTextClick) return;
     if (textEl.querySelector("input")) return;
 
+    textEl.empty();
+
     const editor = textEl.createEl("input", {
       cls: "atonal-todo-edit",
       attr: {
@@ -516,8 +525,6 @@ class AtonalToDoView extends ItemView {
     });
 
     editor.value = task.text;
-    textEl.empty();
-    textEl.appendChild(editor);
     editor.focus();
     editor.select();
 
