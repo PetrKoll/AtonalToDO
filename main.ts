@@ -199,8 +199,21 @@ class AtonalToDoView extends ItemView {
       return;
     }
 
-    for (const task of this.tasks) {
-      const row = this.listEl.createDiv({ cls: "atonal-todo-task" });
+    const activeTasks = this.tasks.filter((task) => !task.completed);
+    const completedTasks = this.tasks.filter((task) => task.completed);
+
+    this.renderTaskGroup("To do", activeTasks);
+    this.renderTaskGroup("Completed", completedTasks);
+  }
+
+  private renderTaskGroup(label: string, tasks: Task[]) {
+    if (!this.listEl || tasks.length === 0) return;
+
+    const group = this.listEl.createDiv({ cls: "atonal-todo-group" });
+    group.createDiv({ cls: "atonal-todo-group-label", text: label });
+
+    for (const task of tasks) {
+      const row = group.createDiv({ cls: "atonal-todo-task" });
       row.toggleClass("is-complete", task.completed);
 
       const checkbox = row.createEl("button", {
@@ -237,8 +250,8 @@ class AtonalToDoView extends ItemView {
     if (!text || !this.file) return;
 
     await this.plugin.app.vault.process(this.file, (content) => {
-      const prefix = content.trim().length > 0 && !content.endsWith("\n") ? "\n" : "";
-      return `${content}${prefix}- [ ] ${text}\n`;
+      const suffix = content.length > 0 && !content.startsWith("\n") ? "\n" : "";
+      return `- [ ] ${text}${suffix}${content}`;
     });
 
     if (this.inputEl) {

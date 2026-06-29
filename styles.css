@@ -16,7 +16,6 @@
   gap: 18px;
   height: 100%;
   margin: 0 auto;
-  max-width: 680px;
   padding: 28px 18px 0;
   width: 100%;
 }
@@ -35,7 +34,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: 18px;
   min-height: 160px;
   order: 2;
   overflow: auto;
@@ -48,14 +47,31 @@
   padding: 18px 2px;
 }
 
+.atonal-todo-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.atonal-todo-group-label {
+  color: var(--atonal-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 0 4px 2px;
+  text-transform: uppercase;
+}
+
 .atonal-todo-task {
   align-items: center;
-  border-bottom: 1px solid var(--atonal-border);
+  background: var(--background-secondary);
+  border: 1px solid color-mix(in srgb, var(--atonal-border) 68%, transparent);
+  border-radius: 8px;
   display: grid;
   gap: 12px;
   grid-template-columns: 28px minmax(0, 1fr) 32px;
-  min-height: 52px;
-  padding: 7px 0;
+  min-height: 58px;
+  padding: 9px 12px;
 }
 
 .atonal-todo-checkbox,
@@ -105,6 +121,10 @@
   text-decoration: line-through;
 }
 
+.atonal-todo-task.is-complete {
+  opacity: 0.72;
+}
+
 .atonal-todo-delete {
   border: 0 !important;
   border-radius: 0;
@@ -130,7 +150,7 @@
   flex: 0 0 auto;
   margin: 0;
   order: 1;
-  padding: 0 22px 8px;
+  padding: 0 4px 8px;
 }
 
 .atonal-todo-input {
@@ -152,6 +172,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .atonal-todo-shell {
+    max-width: 680px;
     padding-left: 28px;
     padding-right: 28px;
   }
