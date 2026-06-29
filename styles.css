@@ -37,7 +37,7 @@
   flex-direction: column;
   gap: 8px;
   min-height: 160px;
-  order: 1;
+  order: 2;
   overflow: auto;
   padding-bottom: 8px;
 }
@@ -129,8 +129,8 @@
   box-sizing: border-box;
   flex: 0 0 auto;
   margin: 0 -18px;
-  order: 2;
-  padding: 12px 18px calc(20px + env(safe-area-inset-bottom));
+  order: 1;
+  padding: 0 18px 8px;
 }
 
 .atonal-todo-input {
@@ -148,22 +148,6 @@
 
 .atonal-todo-input::placeholder {
   color: var(--atonal-muted);
-}
-
-.atonal-todo-shell:focus-within {
-  gap: 16px;
-}
-
-.atonal-todo-shell:focus-within .atonal-todo-composer {
-  margin-top: 0;
-  order: 1;
-  padding-bottom: 8px;
-}
-
-.atonal-todo-shell:focus-within .atonal-todo-list {
-  flex: 1 1 auto;
-  min-height: 180px;
-  order: 2;
 }
 
 @media (hover: hover) and (pointer: fine) {
