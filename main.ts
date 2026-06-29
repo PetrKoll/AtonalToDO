@@ -377,7 +377,9 @@ class AtonalToDoView extends ItemView {
         })
       );
 
-      await this.initializeView();
+      window.setTimeout(() => {
+        void this.initializeView();
+      }, 0);
     } catch (error) {
       console.error("AtonalToDo onOpen failed", error);
       this.contentEl.empty();
