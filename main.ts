@@ -10,6 +10,16 @@ type Task = {
   completed: boolean;
 };
 
+type DragState = {
+  task: Task;
+  row: HTMLElement;
+  pointerId: number;
+  startY: number;
+  dragging: boolean;
+  targetLine: number | null;
+  position: "before" | "after";
+};
+
 export default class AtonalToDoPlugin extends Plugin {
   private isRedirectingTodoFile = false;
 
@@ -129,6 +139,7 @@ class AtonalToDoView extends ItemView {
   private file: TFile | null = null;
   private listEl: HTMLElement | null = null;
   private inputEl: HTMLInputElement | null = null;
+  private dragState: DragState | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: AtonalToDoPlugin) {
     super(leaf);
@@ -215,6 +226,9 @@ class AtonalToDoView extends ItemView {
     for (const task of tasks) {
       const row = group.createDiv({ cls: "atonal-todo-task" });
       row.toggleClass("is-complete", task.completed);
+      row.setAttr("data-task-line", String(task.line));
+      row.setAttr("data-task-completed", String(task.completed));
+      this.registerDragHandlers(row, task);
 
       const checkbox = row.createEl("button", {
         cls: "atonal-todo-checkbox",
@@ -242,6 +256,100 @@ class AtonalToDoView extends ItemView {
       deleteButton.addEventListener("click", () => {
         void this.deleteTask(task.line);
       });
+    }
+  }
+
+  private registerDragHandlers(row: HTMLElement, task: Task) {
+    row.addEventListener("pointerdown", (event) => {
+      if ((event.target as HTMLElement).closest("button")) return;
+
+      this.dragState = {
+        task,
+        row,
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        dragging: false,
+        targetLine: null,
+        position: "after"
+      };
+
+      row.setPointerCapture(event.pointerId);
+    });
+
+    row.addEventListener("pointermove", (event) => {
+      const state = this.dragState;
+      if (!state || state.pointerId !== event.pointerId) return;
+
+      const deltaY = event.clientY - state.startY;
+
+      if (!state.dragging && Math.abs(deltaY) < 8) {
+        return;
+      }
+
+      state.dragging = true;
+      state.row.addClass("is-dragging");
+      state.row.style.transform = `translateY(${deltaY}px)`;
+
+      const target = this.getDragTarget(event.clientY, state);
+      this.setDropTarget(target);
+
+      state.targetLine = target?.line ?? null;
+      state.position = target?.position ?? "after";
+      event.preventDefault();
+    });
+
+    row.addEventListener("pointerup", (event) => {
+      void this.finishDrag(event.pointerId);
+    });
+
+    row.addEventListener("pointercancel", (event) => {
+      void this.finishDrag(event.pointerId);
+    });
+  }
+
+  private getDragTarget(clientY: number, state: DragState): { line: number; position: "before" | "after" } | null {
+    if (!this.listEl) return null;
+
+    const rows = Array.from(this.listEl.querySelectorAll<HTMLElement>(".atonal-todo-task"))
+      .filter((row) => row !== state.row && row.dataset.taskCompleted === String(state.task.completed));
+
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect();
+      if (clientY < rect.top || clientY > rect.bottom) continue;
+
+      const line = Number(row.dataset.taskLine);
+      const position = clientY < rect.top + rect.height / 2 ? "before" : "after";
+      return Number.isFinite(line) ? { line, position } : null;
+    }
+
+    return null;
+  }
+
+  private setDropTarget(target: { line: number; position: "before" | "after" } | null) {
+    if (!this.listEl) return;
+
+    for (const row of Array.from(this.listEl.querySelectorAll<HTMLElement>(".atonal-todo-task"))) {
+      row.removeClass("is-drop-before", "is-drop-after");
+    }
+
+    if (!target) return;
+
+    const row = this.listEl.querySelector<HTMLElement>(`.atonal-todo-task[data-task-line="${target.line}"]`);
+    row?.addClass(target.position === "before" ? "is-drop-before" : "is-drop-after");
+  }
+
+  private async finishDrag(pointerId: number) {
+    const state = this.dragState;
+    if (!state || state.pointerId !== pointerId) return;
+
+    state.row.releasePointerCapture(pointerId);
+    state.row.removeClass("is-dragging");
+    state.row.style.transform = "";
+    this.setDropTarget(null);
+    this.dragState = null;
+
+    if (state.dragging && state.targetLine !== null && state.targetLine !== state.task.line) {
+      await this.reorderTask(state.task.line, state.targetLine, state.position);
     }
   }
 
@@ -286,6 +394,35 @@ class AtonalToDoView extends ItemView {
       if (!lines[line]?.match(TASK_LINE)) return content;
 
       lines.splice(line, 1);
+      return lines.join("\n");
+    });
+
+    await this.loadTasks();
+  }
+
+  private async reorderTask(fromLine: number, targetLine: number, position: "before" | "after") {
+    if (!this.file) return;
+
+    await this.plugin.app.vault.process(this.file, (content) => {
+      const lines = content.split("\n");
+      const moving = lines[fromLine];
+
+      if (!moving?.match(TASK_LINE) || !lines[targetLine]?.match(TASK_LINE)) {
+        return content;
+      }
+
+      lines.splice(fromLine, 1);
+
+      let insertAt = targetLine;
+      if (fromLine < targetLine) {
+        insertAt -= 1;
+      }
+
+      if (position === "after") {
+        insertAt += 1;
+      }
+
+      lines.splice(insertAt, 0, moving);
       return lines.join("\n");
     });
 
